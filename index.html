@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Magic Square - Cursed Puzzle</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="bg-canvas"></canvas>
+  <canvas id="victory-canvas"></canvas>
+
+  <div class="app-container">
+
+    <!-- SCREEN: LOGIN -->
+    <div id="screen-login" class="game-screen">
+      <div class="login-box">
+        <div class="skull-icon">💀</div>
+        <h1 class="horror-title">MAGIC SQUARE</h1>
+        <p class="horror-sub">The Cursed Puzzle</p>
+        <p class="login-desc">Sign in to enter the darkness...</p>
+        <button id="btn-google-login" class="btn-google">
+          <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 2.9l5.7-5.7C34.5 6.5 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 8 2.9l5.7-5.7C34.5 6.5 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.3 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8H6.1C9.5 35.7 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.3 4.1-4.1 5.5l6.2 5.2C37 36.7 44 31 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+          Sign in with Google
+        </button>
+        <button id="btn-guest-login" class="btn-secondary" style="margin-top: 12px; width: 100%;">
+          Play as Guest
+        </button>
+        <div id="login-error" class="login-error hidden"></div>
+      </div>
+    </div>
+
+    <!-- SCREEN: HOME -->
+    <div id="screen-home" class="game-screen hidden">
+      <canvas id="menu-bg-canvas"></canvas>
+      <div class="home-layout">
+        <div class="menu-panel glass-panel">
+          <div class="menu-brand">
+            <div class="skull-big">💀</div>
+            <h1 class="horror-title">MAGIC SQUARE</h1>
+            <p class="horror-sub">The Cursed Puzzle</p>
+            <div class="user-info" id="user-info">
+              <img id="user-avatar" src="" alt="" class="user-avatar">
+              <span id="user-name"></span>
+            </div>
+            <div class="stats-row" style="display: flex; justify-content: space-around; margin-top: 14px; font-family: var(--font-mono); font-size: 13px; color: var(--bone-dim);">
+              <div>Levels: <span id="stat-completed" style="color: var(--blood-bright);">0/10</span></div>
+              <div>Time: <span id="stat-time" style="color: var(--blood-bright);">00:00</span></div>
+            </div>
+          </div>
+          <nav class="menu-nav">
+            <button id="btn-continue" class="menu-btn">
+              <i data-lucide="skull"></i><span>Continue</span>
+            </button>
+            <button id="btn-new-game" class="menu-btn">
+              <i data-lucide="flame"></i><span>New Game</span>
+            </button>
+            <button id="btn-levels" class="menu-btn">
+              <i data-lucide="grid-3x3"></i><span>Levels</span>
+            </button>
+            <button id="btn-leaderboard" class="menu-btn">
+              <i data-lucide="crown"></i><span>Leaderboard</span>
+            </button>
+            <button id="btn-settings" class="menu-btn">
+              <i data-lucide="settings"></i><span>Settings</span>
+            </button>
+            <button id="btn-logout" class="menu-btn danger">
+              <i data-lucide="log-out"></i><span>Sign Out</span>
+            </button>
+          </nav>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCREEN: LEVELS -->
+    <div id="screen-levels" class="game-screen hidden">
+      <header class="screen-header">
+        <button id="btn-levels-back" class="back-btn"><i data-lucide="arrow-left"></i> Back</button>
+        <h2>Choose Your Curse</h2>
+        <div style="width:80px"></div>
+      </header>
+      <div id="levels-grid" class="levels-grid"></div>
+    </div>
+
+    <!-- SCREEN: GAME -->
+    <div id="screen-game" class="game-screen hidden">
+      <header class="game-header">
+        <div class="game-brand">
+          <span class="skull-sm">💀</span>
+          <div>
+            <h1>Magic Square</h1>
+            <p>The Cursed Puzzle</p>
+          </div>
+        </div>
+        <div class="game-stats">
+          <div class="stat-card">
+            <span class="stat-label">Target</span>
+            <span class="stat-value text-blood" id="stat-target">15</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Time</span>
+            <span class="stat-value" id="stat-timer">00:00</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Moves</span>
+            <span class="stat-value" id="stat-moves">0</span>
+          </div>
+        </div>
+        <div class="game-actions">
+          <button id="btn-sound-game" class="icon-btn" title="Sound"><i data-lucide="volume-2"></i></button>
+          <button id="btn-help-game" class="icon-btn" title="Help"><i data-lucide="help-circle"></i></button>
+        </div>
+      </header>
+
+      <section class="game-area">
+        <div id="toast" class="toast hidden"><span></span></div>
+        <div class="board-wrap glass-panel">
+          <div class="board-top">
+            <div>
+              <h2 id="level-title">Level 1: 3x3</h2>
+              <div id="star-targets" class="star-targets"></div>
+            </div>
+          </div>
+          <div class="controls-bar">
+            <button id="btn-next-top" class="ctrl-btn"><i data-lucide="skip-forward"></i> Next</button>
+            <button id="btn-reset" class="ctrl-btn"><i data-lucide="refresh-cw"></i> Reset</button>
+            <button id="btn-sound-ctrl" class="ctrl-btn"><i data-lucide="volume-2"></i> <span class="sound-label">Sound</span></button>
+            <button id="btn-back-levels" class="ctrl-btn"><i data-lucide="grid-3x3"></i> Levels</button>
+            <button id="btn-back-home" class="ctrl-btn"><i data-lucide="home"></i> Home</button>
+          </div>
+          <div class="grid-wrap">
+            <div id="grid" class="grid-container"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- MODAL: HELP -->
+  <div id="modal-help" class="modal-overlay hidden">
+    <div class="modal-box glass-panel">
+      <button class="close-btn" id="btn-close-help"><i data-lucide="x"></i></button>
+      <h2>How to Play</h2>
+      <div class="modal-body">
+        <p>Arrange numbers so every row, column, and diagonal adds up to the <strong>Target Sum</strong>.</p>
+        <div class="rules-list">
+          <div class="rule">1. Click two cells to swap their numbers</div>
+          <div class="rule">2. Or drag and drop numbers</div>
+          <div class="rule">3. Every row must equal the target sum</div>
+          <div class="rule">4. Every column must equal the target sum</div>
+          <div class="rule">5. Both diagonals must equal the target sum</div>
+          <div class="rule">6. Complete all to win the level</div>
+        </div>
+      </div>
+      <button class="btn-primary" id="btn-start">Let's Play!</button>
+    </div>
+  </div>
+
+  <!-- MODAL: VICTORY -->
+  <div id="modal-victory" class="modal-overlay hidden">
+    <div class="modal-box victory-box glass-panel">
+      <div class="victory-skull">💀</div>
+      <h2 id="victory-title">Curse Lifted!</h2>
+      <div id="victory-stars" class="victory-stars"></div>
+      <p class="victory-desc">You have solved the cursed square!</p>
+      <div class="victory-stats">
+        <div class="v-stat">
+          <span class="v-label">Time</span>
+          <span class="v-val" id="v-time">00:00</span>
+        </div>
+        <div class="v-stat">
+          <span class="v-label">Moves</span>
+          <span class="v-val" id="v-moves">0</span>
+        </div>
+        <div class="v-stat">
+          <span class="v-label">Score</span>
+          <span class="v-val" id="v-score">0</span>
+        </div>
+      </div>
+      <div class="victory-btns">
+        <button class="btn-primary" id="btn-next-level">Next Level</button>
+        <button class="btn-secondary" id="btn-play-again">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRM RESET -->
+  <div id="modal-confirm" class="modal-overlay hidden">
+    <div class="modal-box glass-panel" style="max-width:420px;text-align:center">
+      <h2>Wipe All Progress?</h2>
+      <p style="color:#c9a0a0;margin:16px 0 24px">This will permanently delete all your scores and progress!</p>
+      <div style="display:flex;gap:12px">
+        <button id="btn-confirm-yes" class="btn-danger" style="flex:1;padding:12px">Yes, Wipe It</button>
+        <button id="btn-confirm-no" class="btn-secondary" style="flex:1;padding:12px">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: LEADERBOARD -->
+  <div id="modal-leaderboard" class="modal-overlay hidden">
+    <div class="modal-box glass-panel" style="max-width:480px">
+      <button class="close-btn" id="btn-close-leaderboard"><i data-lucide="x"></i></button>
+      <h2>Top Cursed Players</h2>
+      <div id="leaderboard-list" class="leaderboard-list"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: SETTINGS -->
+  <div id="modal-settings" class="modal-overlay hidden">
+    <div class="modal-box glass-panel" style="max-width:420px">
+      <button class="close-btn" id="btn-close-settings"><i data-lucide="x"></i></button>
+      <h2>Settings</h2>
+      <div class="settings-list">
+        <div class="setting-row">
+          <span>Sound</span>
+          <button id="btn-sound-toggle" class="btn-toggle">ON</button>
+        </div>
+        <div class="setting-row">
+          <span>Clear Progress</span>
+          <button id="btn-clear-progress" class="btn-danger">Wipe Data</button>
+        </div>
+        <div class="setting-row">
+          <span>How to Play</span>
+          <button id="btn-show-rules" class="btn-secondary">Rules</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDhxQPwc3lzSBc7oC8KZW-hX0KjGlV492Y",
+      authDomain: "magic--square--game.firebaseapp.com",
+      projectId: "magic--square--game",
+      storageBucket: "magic--square--game.firebasestorage.app",
+      messagingSenderId: "969870533051",
+      appId: "1:969870533051:web:7f0454c0dd93250de3249e",
+      measurementId: "G-XHLQPXGHZJ"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    window._firebase = { auth, db, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, doc, setDoc, getDoc, collection, getDocs, query, orderBy, limit };
+    window.dispatchEvent(new Event('firebase-ready'));
+  </script>
+
+  <script>
+    lucide.createIcons();
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
