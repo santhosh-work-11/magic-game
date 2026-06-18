@@ -26,7 +26,7 @@ function generateOddMagicSquare(N) {
 }
 
 function formatTime(s) {
-  return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
 }
 
 // ===================== LEVEL CONFIG =====================
@@ -75,7 +75,7 @@ let audioCtx = null;
 // Confetti
 let confettiActive = false;
 let confettiParticles = [];
-const confettiColors = ['#8a2be2','#ff1493','#da70d6','#4b0082','#ff00ff','#ee82ee'];
+const confettiColors = ['#9f5cf6','#d4af37','#ffe89e','#7c3aed','#ffd700','#a855f7'];
 
 // ===================== DOM REFS =====================
 const screenLogin = document.getElementById('screen-login');
@@ -87,8 +87,6 @@ const toast = document.getElementById('toast');
 const modalHelp = document.getElementById('modal-help');
 const modalVictory = document.getElementById('modal-victory');
 const modalConfirm = document.getElementById('modal-confirm');
-const modalLeaderboard = document.getElementById('modal-leaderboard');
-const modalSettings = document.getElementById('modal-settings');
 const victoryCanvas = document.getElementById('victory-canvas');
 const victoryCtx = victoryCanvas.getContext('2d');
 
@@ -106,9 +104,10 @@ window.addEventListener('firebase-ready', () => {
   onAuthStateChanged(auth, (user) => {
     if (user) {
       currentUser = user;
-      document.getElementById('user-name').textContent = user.displayName || user.email;
+      const nameEl = document.getElementById('user-name');
+      if (nameEl) nameEl.textContent = user.displayName || user.email;
       const avatar = document.getElementById('user-avatar');
-      if (user.photoURL) { avatar.src = user.photoURL; avatar.style.display = 'block'; }
+      if (avatar && user.photoURL) { avatar.src = user.photoURL; avatar.style.display = 'block'; }
       loadProgressFromFirestore();
       showScreen('screen-home');
     } else {
@@ -118,67 +117,50 @@ window.addEventListener('firebase-ready', () => {
   });
 
   // Google Login
-  document.getElementById('btn-google-login').addEventListener('click', async () => {
-    const { auth, GoogleAuthProvider, signInWithPopup } = window._firebase;
-    const provider = new GoogleAuthProvider();
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (e) {
-      const err = document.getElementById('login-error');
-      err.textContent = 'Login failed: ' + e.message;
-      err.classList.remove('hidden');
-    }
-  });
+  const loginBtn = document.getElementById('btn-google-login');
+  if (loginBtn) {
+    loginBtn.addEventListener('click', async () => {
+      const { auth, GoogleAuthProvider, signInWithPopup } = window._firebase;
+      const provider = new GoogleAuthProvider();
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (e) {
+        const err = document.getElementById('login-error');
+        if (err) {
+          err.textContent = 'Login failed: ' + e.message;
+          err.classList.remove('hidden');
+        }
+      }
+    });
+  }
 
   // Sign Out
-  document.getElementById('btn-logout').addEventListener('click', async () => {
-    const { auth, signOut } = window._firebase;
-    await signOut(auth);
-    showScreen('screen-login');
-  });
+  const logoutBtn = document.getElementById('btn-logout');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      const { auth, signOut } = window._firebase;
+      await signOut(auth);
+      showScreen('screen-login');
+    });
+  }
+
+  bindHomeMenu();
+  setupGameEvents();
+  setupSettingsEvents();
+  if (window.lucide) lucide.createIcons();
 });
 
 // ===================== FIRESTORE SAVE/LOAD =====================
 async function saveToFirestore(levelNum, score, movesCount, seconds, stars) {
   if (!currentUser) return;
-  if (currentUser.uid === 'guest_user') {
-    const records = window._localRecords || {};
-    const prev = records[`level_${levelNum}`] || null;
-    const prevStars = prev ? (prev.stars || 0) : 0;
-    const newStars = Math.max(prevStars, stars);
-    const newScore = prev ? Math.max(prev.score || 0, score) : score;
-    
-    records[`level_${levelNum}`] = {
-      level: levelNum,
-      score: newScore,
-      moves: prev ? Math.min(prev.moves || movesCount, movesCount) : movesCount,
-      time: prev ? Math.min(prev.time || seconds, seconds) : seconds,
-      stars: newStars,
-      displayName: currentUser.displayName,
-      uid: currentUser.uid,
-      date: new Date().toISOString()
-    };
-    
-    window._localRecords = records;
-    localStorage.setItem('guest_scores', JSON.stringify(records));
-    
-    if (levels[levelNum + 1]) {
-      levels[levelNum + 1].unlocked = true;
-      const currentHighest = parseInt(localStorage.getItem('guest_unlocked') || '1');
-      localStorage.setItem('guest_unlocked', Math.max(currentHighest, levelNum + 1));
-    }
-    return;
-  }
   const { db, doc, setDoc, getDoc } = window._firebase;
-  const ref = doc(db, 'users', currentUser.uid, 'scores', `level_${levelNum}`);
-  
+  const ref = doc(db, 'users', currentUser.uid, 'scores', 'level_' + levelNum);
   try {
     const existing = await getDoc(ref);
     const prev = existing.exists() ? existing.data() : null;
     const prevStars = prev ? (prev.stars || 0) : 0;
     const newStars = Math.max(prevStars, stars);
     const newScore = prev ? Math.max(prev.score || 0, score) : score;
-    
     await setDoc(ref, {
       level: levelNum,
       score: newScore,
@@ -189,85 +171,67 @@ async function saveToFirestore(levelNum, score, movesCount, seconds, stars) {
       uid: currentUser.uid,
       date: new Date().toISOString()
     });
-
-    // Also save to global leaderboard
-    const lbRef = doc(db, 'leaderboard', `${currentUser.uid}_level_${levelNum}`);
-    await setDoc(lbRef, {
-      uid: currentUser.uid,
-      displayName: currentUser.displayName || 'Unknown',
-      level: levelNum,
-      score: newScore,
-      stars: newStars,
-      date: new Date().toISOString()
-    });
-
-    // Unlock next level in Firestore
     if (levels[levelNum + 1]) {
       const unlockRef = doc(db, 'users', currentUser.uid, 'progress', 'unlocked');
-      const unlocked = levelNum + 1;
-      await setDoc(unlockRef, { highestUnlocked: unlocked }, { merge: true });
+      await setDoc(unlockRef, { highestUnlocked: levelNum + 1 }, { merge: true });
     }
+    await updateGlobalLeaderboard();
   } catch (e) {
     console.error('Save error:', e);
   }
 }
 
-function loadProgressFromLocal() {
+async function updateGlobalLeaderboard() {
+  if (!currentUser) return;
+  const { db, doc, setDoc, collection, getDocs } = window._firebase;
   try {
-    const highestUnlocked = parseInt(localStorage.getItem('guest_unlocked') || '1');
-    const savedScores = localStorage.getItem('guest_scores');
-    const records = savedScores ? JSON.parse(savedScores) : {};
-    
-    for (let l = 1; l <= 10; l++) {
-      if (levels[l]) levels[l].unlocked = (l <= highestUnlocked);
-    }
-    window._localRecords = records;
-    
-    updateMenuStats();
-    buildLevelsGrid();
-    renderLeaderboard();
-  } catch(e) {
-    console.error('Local progress load error:', e);
+    const scoresRef = collection(db, 'users', currentUser.uid, 'scores');
+    const snap = await getDocs(scoresRef);
+    let totalScore = 0, totalStars = 0, levelsCompleted = 0;
+    snap.forEach(d => {
+      const data = d.data();
+      totalScore += data.score || 0;
+      totalStars += data.stars || 0;
+      levelsCompleted++;
+    });
+    const lbRef = doc(db, 'leaderboard', currentUser.uid);
+    await setDoc(lbRef, {
+      uid: currentUser.uid,
+      displayName: currentUser.displayName || 'Unknown',
+      photoURL: currentUser.photoURL || '',
+      totalScore,
+      totalStars,
+      levelsCompleted,
+      date: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('Leaderboard update error:', e);
   }
 }
 
 async function loadProgressFromFirestore() {
   if (!currentUser) return;
-  if (currentUser.uid === 'guest_user') {
-    loadProgressFromLocal();
-    return;
-  }
   const { db, doc, getDoc, collection, getDocs } = window._firebase;
-
   try {
-    // Load unlocked progress
     const progressRef = doc(db, 'users', currentUser.uid, 'progress', 'unlocked');
     const progressDoc = await getDoc(progressRef);
     let highestUnlocked = 1;
     if (progressDoc.exists()) {
       highestUnlocked = progressDoc.data().highestUnlocked || 1;
     }
-
-    // Check scores to determine highest completed
     const scoresRef = collection(db, 'users', currentUser.uid, 'scores');
     const scoresSnap = await getDocs(scoresRef);
     const records = {};
     scoresSnap.forEach(d => { records[d.id] = d.data(); });
-    
-    // Unlock levels based on progress
     for (let l = 1; l <= 10; l++) {
       if (levels[l]) levels[l].unlocked = (l <= highestUnlocked);
     }
-    
-    // Store records locally for quick access
     window._localRecords = records;
-    
     updateMenuStats();
     buildLevelsGrid();
     renderLeaderboard();
   } catch (e) {
     console.error('Load error:', e);
-    // Fallback to level 1
     levels[1].unlocked = true;
     window._localRecords = {};
     buildLevelsGrid();
@@ -278,32 +242,33 @@ async function renderLeaderboard() {
   const { db, collection, getDocs, query, orderBy, limit } = window._firebase;
   const list = document.getElementById('leaderboard-list');
   if (!list) return;
-
+  list.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;font-style:italic">Loading...</div>';
   try {
-    const q = query(collection(db, 'leaderboard'), orderBy('score', 'desc'), limit(10));
+    const q = query(collection(db, 'leaderboard'), orderBy('totalScore', 'desc'), limit(10));
     const snap = await getDocs(q);
     list.innerHTML = '';
-    
     if (snap.empty) {
-      list.innerHTML = '<div style="color:var(--bone-dim);font-style:italic;text-align:center;padding:20px">No cursed players yet...</div>';
+      list.innerHTML = '<div style="color:var(--text-dim);font-style:italic;text-align:center;padding:20px">No players yet... Be the first!</div>';
       return;
     }
-    
+    const medals = ['🥇', '🥈', '🥉'];
     let rank = 1;
     snap.forEach(d => {
       const data = d.data();
+      const isMe = data.uid === (currentUser && currentUser.uid);
       const item = document.createElement('div');
-      item.className = 'lb-item';
-      item.innerHTML = `
-        <span class="lb-rank">#${rank}</span>
-        <span class="lb-name">${data.displayName || 'Unknown'}</span>
-        <span class="lb-score">${data.score} pts</span>
-      `;
+      item.className = 'lb-item' + (isMe ? ' lb-mine' : '');
+      const medal = medals[rank-1] || '#' + rank;
+      const avatarHtml = data.photoURL ? '<img src="' + data.photoURL + '" class="lb-avatar" onerror="this.style.display=\'none\'">' : '';
+      const nameHtml = '<span class="lb-name">' + (data.displayName || 'Unknown') + (isMe ? ' (You)' : '') + '</span>';
+      const rightHtml = '<div class="lb-right"><span class="lb-score">' + (data.totalScore||0).toLocaleString() + ' pts</span><span class="lb-levels">' + (data.levelsCompleted||0) + '/10 levels</span></div>';
+      item.innerHTML = '<span class="lb-rank">' + medal + '</span>' + avatarHtml + nameHtml + rightHtml;
       list.appendChild(item);
       rank++;
     });
-  } catch (e) {
-    list.innerHTML = '<div style="color:var(--bone-dim);font-style:italic;text-align:center;padding:20px">Could not load...</div>';
+  } catch(e) {
+    list.innerHTML = '<div style="color:var(--text-dim);font-style:italic;text-align:center;padding:20px">Could not load leaderboard</div>';
+    console.error(e);
   }
 }
 
@@ -312,46 +277,59 @@ function updateMenuStats() {
   const records = window._localRecords || {};
   let completed = 0, totalTime = 0;
   for (let l = 1; l <= 10; l++) {
-    if (records[`level_${l}`]) {
+    if (records['level_' + l]) {
       completed++;
-      totalTime += records[`level_${l}`].time || 0;
+      totalTime += records['level_' + l].time || 0;
     }
   }
   const el1 = document.getElementById('stat-completed');
   const el2 = document.getElementById('stat-time');
-  if (el1) el1.textContent = `${completed}/10`;
+  if (el1) el1.textContent = completed + '/10';
   if (el2) el2.textContent = formatTime(totalTime);
 }
 
 // ===================== HOME MENU =====================
 function bindHomeMenu() {
   const btns = [
-    { id: 'btn-continue', action: () => { continueLast(); } },
-    { id: 'btn-new-game', action: () => openModal(modalConfirm) },
-    { id: 'btn-levels', action: () => showScreen('screen-levels') },
-    { id: 'btn-leaderboard', action: () => openModal(modalLeaderboard) },
-    { id: 'btn-settings', action: () => openModal(modalSettings) },
+    { id: 'btn-continue', action: continueLast, section: null },
+    { id: 'btn-new-game', action: () => openModal(modalConfirm), section: null },
+    { id: 'btn-levels', action: () => showScreen('screen-levels'), section: null },
+    { id: 'btn-leaderboard', action: null, section: 'details-leaderboard' },
+    { id: 'btn-settings', action: null, section: 'details-settings' },
   ];
 
-  btns.forEach(({ id, action }) => {
-    const btn = document.getElementById(id);
+  btns.forEach(function(cfg) {
+    const btn = document.getElementById(cfg.id);
     if (!btn) return;
-    btn.addEventListener('mouseenter', () => {
-      btns.forEach(b => document.getElementById(b.id)?.classList.remove('active'));
+    btn.addEventListener('mouseenter', function() {
+      btns.forEach(function(b) {
+        const el = document.getElementById(b.id);
+        if (el) el.classList.remove('active');
+      });
       btn.classList.add('active');
+      showDetailSection(cfg.section || 'details-default');
     });
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', function() {
       playSound('click');
-      if (action) action();
+      if (cfg.action) cfg.action();
     });
   });
+}
+
+function showDetailSection(id) {
+  document.querySelectorAll('.detail-sec').forEach(function(s) {
+    s.classList.add('hidden');
+    s.classList.remove('active');
+  });
+  const sec = document.getElementById(id);
+  if (sec) { sec.classList.remove('hidden'); sec.classList.add('active'); }
 }
 
 function continueLast() {
   const records = window._localRecords || {};
   let highest = 0;
   for (let l = 1; l <= 10; l++) {
-    if (records[`level_${l}`]) highest = l;
+    if (records['level_' + l]) highest = l;
     else break;
   }
   const next = Math.min(10, highest + 1);
@@ -369,29 +347,22 @@ function buildLevelsGrid() {
   for (let l = 1; l <= 10; l++) {
     const config = levels[l];
     const card = document.createElement('div');
-    card.className = `level-card${config.unlocked ? '' : ' locked'}${l === currentLevel ? ' active' : ''}`;
+    card.className = 'level-card' + (config.unlocked ? '' : ' locked') + (l === currentLevel ? ' active' : '');
     card.dataset.level = l;
 
-    const isCompleted = !!records[`level_${l}`];
-    const stars = isCompleted ? (records[`level_${l}`].stars || 0) : 0;
+    const isCompleted = !!records['level_' + l];
+    const stars = isCompleted ? (records['level_' + l].stars || 0) : 0;
     const icon = config.unlocked ? (isCompleted ? 'check-circle' : 'play-circle') : 'lock';
 
     let starsHtml = '';
     if (config.unlocked) {
-      for (let i = 1; i <= 3; i++) starsHtml += `<span>${i <= stars ? '⭐' : '☆'}</span>`;
+      for (let i = 1; i <= 3; i++) starsHtml += '<span>' + (i <= stars ? '⭐' : '☆') + '</span>';
     }
 
-    card.innerHTML = `
-      <div>
-        <div class="level-num">Level ${l}</div>
-        <div class="level-desc">${config.size}×${config.size} (Sum ${config.target})</div>
-        <div class="level-stars">${starsHtml}</div>
-      </div>
-      <i data-lucide="${icon}" class="level-icon"></i>
-    `;
+    card.innerHTML = '<div><div class="level-num">Level ' + l + '</div><div class="level-desc">' + config.size + 'x' + config.size + ' (Sum ' + config.target + ')</div><div class="level-stars">' + starsHtml + '</div></div><i data-lucide="' + icon + '" class="level-icon"></i>';
 
     if (config.unlocked) {
-      card.addEventListener('click', () => {
+      card.addEventListener('click', function() {
         playSound('click');
         initLevel(l);
         showScreen('screen-game');
@@ -408,7 +379,7 @@ function initLevel(lvl) {
   currentLevel = lvl;
   const cfg = levels[lvl];
 
-  document.getElementById('level-title').textContent = `Level ${lvl}: ${cfg.size}×${cfg.size}`;
+  document.getElementById('level-title').textContent = 'Level ' + lvl + ': ' + cfg.size + 'x' + cfg.size;
   document.getElementById('stat-target').textContent = cfg.target;
 
   moves = 0;
@@ -445,8 +416,8 @@ function buildGrid() {
   const gap = size > 15 ? '3px' : size > 9 ? '5px' : size > 5 ? '7px' : '10px';
   grid.style.setProperty('--cell-font-size', fontSize);
   grid.style.gap = gap;
-  grid.style.gridTemplateColumns = `repeat(${size}, 1fr) auto`;
-  grid.style.gridTemplateRows = `repeat(${size}, 1fr) auto`;
+  grid.style.gridTemplateColumns = 'repeat(' + size + ', 1fr) auto';
+  grid.style.gridTemplateRows = 'repeat(' + size + ', 1fr) auto';
 
   for (let r = 0; r <= size; r++) {
     for (let c = 0; c <= size; c++) {
@@ -457,7 +428,6 @@ function buildGrid() {
         cell.dataset.index = idx;
         cell.setAttribute('draggable', 'true');
         if (idx === selectedCell) cell.classList.add('selected');
-
         const val = document.createElement('div');
         val.className = 'cell-val';
         val.textContent = gridState[idx];
@@ -466,25 +436,22 @@ function buildGrid() {
       } else if (r < size && c === size) {
         const ind = document.createElement('div');
         ind.className = 'indicator-cell incorrect';
-        ind.id = `row-${r}`;
-        const lbl = size <= 7 ? `<span style="font-size:8px;opacity:0.6">R${r+1}</span>` : '';
-        ind.innerHTML = `${lbl}<span class="sum-val">0</span>`;
+        ind.id = 'row-' + r;
+        const lbl = size <= 7 ? '<span style="font-size:8px;opacity:0.6">R' + (r+1) + '</span>' : '';
+        ind.innerHTML = lbl + '<span class="sum-val">0</span>';
         grid.appendChild(ind);
       } else if (r === size && c < size) {
         const ind = document.createElement('div');
         ind.className = 'indicator-cell incorrect';
-        ind.id = `col-${c}`;
-        const lbl = size <= 7 ? `<span style="font-size:8px;opacity:0.6">C${c+1}</span>` : '';
-        ind.innerHTML = `${lbl}<span class="sum-val">0</span>`;
+        ind.id = 'col-' + c;
+        const lbl = size <= 7 ? '<span style="font-size:8px;opacity:0.6">C' + (c+1) + '</span>' : '';
+        ind.innerHTML = lbl + '<span class="sum-val">0</span>';
         grid.appendChild(ind);
       } else {
         const ind = document.createElement('div');
         ind.className = 'indicator-cell diagonal-indicator';
         ind.id = 'diag-corner';
-        ind.innerHTML = `
-          <div class="diag-sum" id="diag-main"><span style="opacity:0.5">↘</span><span class="sum-val">0</span></div>
-          <div class="diag-sum" id="diag-anti" style="margin-top:3px"><span style="opacity:0.5">↙</span><span class="sum-val">0</span></div>
-        `;
+        ind.innerHTML = '<div class="diag-sum" id="diag-main"><span style="opacity:0.5">↘</span><span class="sum-val">0</span></div><div class="diag-sum" id="diag-anti" style="margin-top:3px"><span style="opacity:0.5">↙</span><span class="sum-val">0</span></div>';
         grid.appendChild(ind);
       }
     }
@@ -496,13 +463,10 @@ function buildGrid() {
 
 function highlightDuplicates() {
   const counts = {};
-  gridState.forEach(v => { if (v !== null) counts[v] = (counts[v] || 0) + 1; });
-  document.querySelectorAll('.grid-cell').forEach(cell => {
+  gridState.forEach(function(v) { if (v !== null) counts[v] = (counts[v] || 0) + 1; });
+  document.querySelectorAll('.grid-cell').forEach(function(cell) {
     const idx = parseInt(cell.dataset.index);
-    if (!isNaN(idx)) {
-      const dup = counts[gridState[idx]] > 1;
-      cell.classList.toggle('duplicate', dup);
-    }
+    if (!isNaN(idx)) cell.classList.toggle('duplicate', counts[gridState[idx]] > 1);
   });
 }
 
@@ -514,20 +478,20 @@ function updateSums() {
   for (let r = 0; r < size; r++) {
     let sum = 0;
     for (let c = 0; c < size; c++) sum += gridState[r * size + c] || 0;
-    const el = document.getElementById(`row-${r}`);
+    const el = document.getElementById('row-' + r);
     if (el) {
       el.querySelector('.sum-val').textContent = sum;
-      el.className = `indicator-cell ${sum === target ? 'correct' : 'incorrect'}`;
+      el.className = 'indicator-cell ' + (sum === target ? 'correct' : 'incorrect');
     }
   }
 
   for (let c = 0; c < size; c++) {
     let sum = 0;
     for (let r = 0; r < size; r++) sum += gridState[r * size + c] || 0;
-    const el = document.getElementById(`col-${c}`);
+    const el = document.getElementById('col-' + c);
     if (el) {
       el.querySelector('.sum-val').textContent = sum;
-      el.className = `indicator-cell ${sum === target ? 'correct' : 'incorrect'}`;
+      el.className = 'indicator-cell ' + (sum === target ? 'correct' : 'incorrect');
     }
   }
 
@@ -543,14 +507,14 @@ function updateSums() {
 
   if (dMain) {
     dMain.querySelector('.sum-val').textContent = mainSum;
-    dMain.querySelector('.sum-val').style.color = mainSum === target ? 'var(--green-glow)' : '';
+    dMain.querySelector('.sum-val').style.color = mainSum === target ? 'var(--emerald-glow)' : '';
   }
   if (dAnti) {
     dAnti.querySelector('.sum-val').textContent = antiSum;
-    dAnti.querySelector('.sum-val').style.color = antiSum === target ? 'var(--green-glow)' : '';
+    dAnti.querySelector('.sum-val').style.color = antiSum === target ? 'var(--emerald-glow)' : '';
   }
   if (dCorner) {
-    dCorner.className = `indicator-cell diagonal-indicator${mainSum === target && antiSum === target ? ' correct' : ''}`;
+    dCorner.className = 'indicator-cell diagonal-indicator' + (mainSum === target && antiSum === target ? ' correct' : '');
   }
 }
 
@@ -592,8 +556,7 @@ function handleWin() {
     buildLevelsGrid();
   }
 
-  // Victory modal
-  document.getElementById('victory-title').textContent = `Level ${currentLevel} Complete!`;
+  document.getElementById('victory-title').textContent = 'Level ' + currentLevel + ' Complete!';
   document.getElementById('v-time').textContent = formatTime(timeElapsed);
   document.getElementById('v-moves').textContent = moves;
   document.getElementById('v-score').textContent = score;
@@ -608,16 +571,16 @@ function handleWin() {
   }
 
   const nextBtn = document.getElementById('btn-next-level');
-  nextBtn.style.display = levels[currentLevel + 1] ? 'block' : 'none';
+  if (nextBtn) nextBtn.style.display = levels[currentLevel + 1] ? 'block' : 'none';
 
   startConfetti();
-  showToast('Curse lifted! Level complete!');
+  showToast('Level Complete! Well done!');
 
-  setTimeout(() => openModal(modalVictory), 500);
+  setTimeout(function() { openModal(modalVictory); }, 500);
 
-  autoTransition = setTimeout(() => {
+  autoTransition = setTimeout(function() {
     if (levels[currentLevel + 1]) nextLevel();
-    else { closeModal(modalVictory); showToast('All curses lifted! You are free!'); }
+    else { closeModal(modalVictory); showToast('All levels complete! You are free!'); }
   }, 4000);
 }
 
@@ -626,23 +589,25 @@ function calculateScore() {
   return Math.max(100, base - timeElapsed * 10 - moves * 30);
 }
 
+function nextLevel() {
+  closeModal(modalVictory);
+  const next = currentLevel + 1;
+  if (levels[next] && levels[next].unlocked) { initLevel(next); }
+}
+
 // ===================== STAR TARGETS UI =====================
 function updateStarTargets() {
   const container = document.getElementById('star-targets');
   if (!container) return;
   const l = starLimits[currentLevel];
   if (!l) { container.innerHTML = ''; return; }
-  container.innerHTML = `
-    <span class="star-badge">⭐⭐⭐ ≤${l.three/60}m</span>
-    <span class="star-badge">⭐⭐ ≤${l.two/60}m</span>
-    <span class="star-badge">⭐ >${l.two/60}m</span>
-  `;
+  container.innerHTML = '<span class="star-badge">⭐⭐⭐ &le;' + (l.three/60) + 'm</span><span class="star-badge">⭐⭐ &le;' + (l.two/60) + 'm</span><span class="star-badge">⭐ &gt;' + (l.two/60) + 'm</span>';
 }
 
 // ===================== TIMER =====================
 function startTimer() {
   stopTimer();
-  timerInterval = setInterval(() => {
+  timerInterval = setInterval(function() {
     timeElapsed++;
     document.getElementById('stat-timer').textContent = formatTime(timeElapsed);
   }, 1000);
@@ -656,11 +621,11 @@ function resetTimer() {
 
 // ===================== TOAST =====================
 let toastTimer = null;
-function showToast(msg, type = 'success') {
+function showToast(msg, type) {
   if (toastTimer) clearTimeout(toastTimer);
   toast.querySelector('span').textContent = msg;
-  toast.className = `toast${type === 'error' ? ' error' : ''}`;
-  toastTimer = setTimeout(() => toast.classList.add('hidden'), 3000);
+  toast.className = 'toast' + (type === 'error' ? ' error' : '');
+  toastTimer = setTimeout(function() { toast.classList.add('hidden'); }, 3000);
 }
 
 // ===================== MODALS =====================
@@ -689,30 +654,30 @@ function playSound(type) {
   osc.connect(gain);
   gain.connect(audioCtx.destination);
   const now = audioCtx.currentTime;
-
-  switch(type) {
-    case 'click':
-      osc.type = 'triangle'; osc.frequency.setValueAtTime(300, now);
-      gain.gain.setValueAtTime(0.06, now); gain.gain.exponentialRampToValueAtTime(0.001, now+0.05);
-      osc.start(now); osc.stop(now+0.05); break;
-    case 'place':
-      osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now); osc.frequency.exponentialRampToValueAtTime(400, now+0.1);
-      gain.gain.setValueAtTime(0.08, now); gain.gain.exponentialRampToValueAtTime(0.001, now+0.15);
-      osc.start(now); osc.stop(now+0.15); break;
-    case 'error':
-      osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, now);
-      gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.001, now+0.3);
-      osc.start(now); osc.stop(now+0.3); break;
-    case 'victory':
-      const notes = [220, 277, 330, 440];
-      notes.forEach((f, i) => {
-        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-        o.type = 'sine'; o.frequency.value = f;
-        o.connect(g); g.connect(audioCtx.destination);
-        g.gain.setValueAtTime(0.08, now + i*0.1);
-        g.gain.exponentialRampToValueAtTime(0.001, now + i*0.1 + 0.5);
-        o.start(now + i*0.1); o.stop(now + i*0.1 + 0.5);
-      }); break;
+  if (type === 'click') {
+    osc.type = 'triangle'; osc.frequency.setValueAtTime(300, now);
+    gain.gain.setValueAtTime(0.06, now); gain.gain.exponentialRampToValueAtTime(0.001, now+0.05);
+    osc.start(now); osc.stop(now+0.05);
+  } else if (type === 'place') {
+    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now); osc.frequency.exponentialRampToValueAtTime(400, now+0.1);
+    gain.gain.setValueAtTime(0.08, now); gain.gain.exponentialRampToValueAtTime(0.001, now+0.15);
+    osc.start(now); osc.stop(now+0.15);
+  } else if (type === 'error') {
+    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, now);
+    gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.001, now+0.3);
+    osc.start(now); osc.stop(now+0.3);
+  } else if (type === 'victory') {
+    osc.stop();
+    const notes = [220, 277, 330, 440];
+    notes.forEach(function(f, i) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      o.connect(g); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.08, now + i*0.1);
+      g.gain.exponentialRampToValueAtTime(0.001, now + i*0.1 + 0.5);
+      o.start(now + i*0.1); o.stop(now + i*0.1 + 0.5);
+    });
   }
 }
 
@@ -723,22 +688,17 @@ function toggleSound() {
 }
 
 function updateSoundUI() {
-  const label = soundEnabled ? 'Sound ON' : 'Sound OFF';
   const icon = soundEnabled ? 'volume-2' : 'volume-x';
-  
-  ['btn-sound-game', 'btn-sound-ctrl'].forEach(id => {
+  ['btn-sound-game', 'btn-sound-ctrl'].forEach(function(id) {
     const btn = document.getElementById(id);
     if (!btn) return;
     const i = btn.querySelector('i');
     if (i) i.setAttribute('data-lucide', icon);
   });
-
   const soundLabel = document.querySelector('.sound-label');
   if (soundLabel) soundLabel.textContent = soundEnabled ? 'Sound' : 'Muted';
-
   const toggle = document.getElementById('btn-sound-toggle');
   if (toggle) toggle.textContent = soundEnabled ? 'ON' : 'OFF';
-
   if (window.lucide) lucide.createIcons();
 }
 
@@ -768,11 +728,11 @@ function animateConfetti() {
   if (!confettiActive) { victoryCtx.clearRect(0,0,victoryCanvas.width,victoryCanvas.height); return; }
   victoryCtx.clearRect(0,0,victoryCanvas.width,victoryCanvas.height);
   let rem = 0;
-  confettiParticles.forEach(p => {
+  confettiParticles.forEach(function(p) {
     p.tiltAngle += p.tiltInc;
     p.y += (Math.cos(p.d) + 3 + p.r/2) / 2;
     p.x += Math.sin(p.tiltAngle) * 0.5;
-    p.tilt = Math.sin(p.tiltAngle - confettiParticles.indexOf(p)/3) * 12;
+    p.tilt = Math.sin(p.tiltAngle) * 12;
     if (p.y <= victoryCanvas.height) rem++;
     victoryCtx.beginPath();
     victoryCtx.lineWidth = p.r;
@@ -794,14 +754,14 @@ function initMenuBg() {
   menuBgCanvas.width = window.innerWidth;
   menuBgCanvas.height = window.innerHeight;
   menuBgParticles = [];
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 50; i++) {
     menuBgParticles.push({
       x: Math.random() * menuBgCanvas.width,
       y: Math.random() * menuBgCanvas.height,
-      vx: (Math.random()-0.5)*0.3, vy: (Math.random()-0.5)*0.3,
+      vx: (Math.random()-0.5)*0.4, vy: (Math.random()-0.5)*0.4,
       r: Math.random()*2+1,
       alpha: Math.random()*0.4+0.1,
-      color: Math.random()>0.5 ? '#ff1493' : '#8a2be2'
+      color: Math.random()>0.5 ? '#9f5cf6' : '#d4af37'
     });
   }
   if (menuBgAnim) cancelAnimationFrame(menuBgAnim);
@@ -809,9 +769,9 @@ function initMenuBg() {
 }
 function animateMenuBg() {
   if (!menuBgCtx) return;
-  menuBgCtx.fillStyle = 'rgba(12,2,20,0.15)';
+  menuBgCtx.fillStyle = 'rgba(8,4,18,0.15)';
   menuBgCtx.fillRect(0, 0, menuBgCanvas.width, menuBgCanvas.height);
-  menuBgParticles.forEach((p,i) => {
+  menuBgParticles.forEach(function(p, i) {
     p.x += p.vx; p.y += p.vy;
     if (p.x < 0) p.x = menuBgCanvas.width;
     if (p.x > menuBgCanvas.width) p.x = 0;
@@ -823,12 +783,12 @@ function animateMenuBg() {
     menuBgCtx.fillStyle = p.color;
     menuBgCtx.shadowBlur = 8; menuBgCtx.shadowColor = p.color;
     menuBgCtx.fill();
-    menuBgParticles.slice(i+1).forEach(p2 => {
+    menuBgParticles.slice(i+1).forEach(function(p2) {
       const dx = p.x-p2.x, dy = p.y-p2.y, dist = Math.hypot(dx,dy);
-      if (dist < 100) {
+      if (dist < 120) {
         menuBgCtx.beginPath();
         menuBgCtx.moveTo(p.x, p.y); menuBgCtx.lineTo(p2.x, p2.y);
-        menuBgCtx.strokeStyle = `rgba(138,43,226,${(100-dist)/100*0.15})`;
+        menuBgCtx.strokeStyle = 'rgba(159,92,246,' + ((120-dist)/120*0.12) + ')';
         menuBgCtx.lineWidth = 0.5;
         menuBgCtx.globalAlpha = 1;
         menuBgCtx.stroke();
@@ -841,167 +801,79 @@ function animateMenuBg() {
 }
 
 // ===================== EVENT LISTENERS =====================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', function() {
   resizeVictoryCanvas();
   window.addEventListener('resize', resizeVictoryCanvas);
-
-  // Bind everything immediately for quick offline play
-  bindHomeMenu();
-  setupGameEvents();
-  setupSettingsEvents();
-  if (window.lucide) lucide.createIcons();
-
-  // Guest Login click
-  document.getElementById('btn-guest-login')?.addEventListener('click', () => {
-    currentUser = {
-      uid: 'guest_user',
-      displayName: 'Guest Cursed One',
-      photoURL: null
-    };
-    document.getElementById('user-name').textContent = currentUser.displayName;
-    const avatar = document.getElementById('user-avatar');
-    if (avatar) avatar.style.display = 'none';
-    
-    loadProgressFromLocal();
-    showScreen('screen-home');
-  });
-
-  // Wait for Firebase
-  window.addEventListener('firebase-ready', () => {
-    const { auth, onAuthStateChanged } = window._firebase;
-
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        currentUser = user;
-        document.getElementById('user-name').textContent = user.displayName || user.email;
-        const avatar = document.getElementById('user-avatar');
-        if (user.photoURL) { avatar.src = user.photoURL; avatar.style.display = 'block'; }
-        loadProgressFromFirestore();
-        showScreen('screen-home');
-      } else {
-        if (!currentUser || currentUser.uid !== 'guest_user') {
-          currentUser = null;
-          showScreen('screen-login');
-        }
-      }
-    });
-
-    // Google Login
-    document.getElementById('btn-google-login')?.addEventListener('click', async () => {
-      const { auth, GoogleAuthProvider, signInWithPopup } = window._firebase;
-      const provider = new GoogleAuthProvider();
-      try {
-        await signInWithPopup(auth, provider);
-      } catch (e) {
-        const err = document.getElementById('login-error');
-        if (err) {
-          err.textContent = 'Login failed: ' + e.message;
-          err.classList.remove('hidden');
-        }
-      }
-    });
-
-    // Sign Out
-    document.getElementById('btn-logout')?.addEventListener('click', async () => {
-      const { auth, signOut } = window._firebase;
-      try {
-        await signOut(auth);
-      } catch(e) {}
-      currentUser = null;
-      showScreen('screen-login');
-    });
-  });
 });
 
 function setupGameEvents() {
-  // Levels back
-  document.getElementById('btn-levels-back')?.addEventListener('click', () => {
-    playSound('click');
-    showScreen('screen-home');
-  });
+  const levelsBack = document.getElementById('btn-levels-back');
+  if (levelsBack) levelsBack.addEventListener('click', function() { playSound('click'); showScreen('screen-home'); });
 
-  // Game controls
-  document.getElementById('btn-next-top')?.addEventListener('click', () => {
+  const nextTop = document.getElementById('btn-next-top');
+  if (nextTop) nextTop.addEventListener('click', function() {
     playSound('click');
     const next = currentLevel + 1;
-    if (levels[next]?.unlocked) initLevel(next);
+    if (levels[next] && levels[next].unlocked) initLevel(next);
     else showToast('Next level is locked!', 'error');
   });
-  document.getElementById('btn-reset')?.addEventListener('click', () => { playSound('click'); resetBoard(); });
-  document.getElementById('btn-sound-ctrl')?.addEventListener('click', toggleSound);
-  document.getElementById('btn-sound-game')?.addEventListener('click', toggleSound);
-  document.getElementById('btn-back-levels')?.addEventListener('click', () => {
-    playSound('click');
-    stopTimer();
-    gameActive = false;
-    showScreen('screen-levels');
+
+  const resetBtn = document.getElementById('btn-reset');
+  if (resetBtn) resetBtn.addEventListener('click', function() { playSound('click'); resetBoard(); });
+
+  const soundCtrl = document.getElementById('btn-sound-ctrl');
+  if (soundCtrl) soundCtrl.addEventListener('click', toggleSound);
+
+  const soundGame = document.getElementById('btn-sound-game');
+  if (soundGame) soundGame.addEventListener('click', toggleSound);
+
+  const backLevels = document.getElementById('btn-back-levels');
+  if (backLevels) backLevels.addEventListener('click', function() {
+    playSound('click'); stopTimer(); gameActive = false; showScreen('screen-levels');
   });
-  document.getElementById('btn-back-home')?.addEventListener('click', () => {
-    playSound('click');
-    stopTimer();
-    gameActive = false;
-    showScreen('screen-home');
+
+  const helpGame = document.getElementById('btn-help-game');
+  if (helpGame) helpGame.addEventListener('click', function() { playSound('click'); openModal(modalHelp); });
+
+  const closeHelp = document.getElementById('btn-close-help');
+  if (closeHelp) closeHelp.addEventListener('click', function() { closeModal(modalHelp); });
+
+  const startBtn = document.getElementById('btn-start');
+  if (startBtn) startBtn.addEventListener('click', function() { closeModal(modalHelp); });
+
+  const nextLevel = document.getElementById('btn-next-level');
+  if (nextLevel) nextLevel.addEventListener('click', function() { playSound('click'); nextLevelFn(); });
+
+  const playAgain = document.getElementById('btn-play-again');
+  if (playAgain) playAgain.addEventListener('click', function() { playSound('click'); closeModal(modalVictory); resetBoard(); });
+
+  const confirmYes = document.getElementById('btn-confirm-yes');
+  if (confirmYes) confirmYes.addEventListener('click', function() {
+    window._localRecords = {};
+    for (let l = 1; l <= 10; l++) { if (levels[l]) levels[l].unlocked = (l === 1); }
+    updateMenuStats();
+    buildLevelsGrid();
+    closeModal(modalConfirm);
+    showToast('Progress wiped!');
+    initLevel(1);
+    showScreen('screen-game');
   });
-  document.getElementById('btn-help-game')?.addEventListener('click', () => { playSound('click'); openModal(modalHelp); });
 
-  // Help modal
-  document.getElementById('btn-close-help')?.addEventListener('click', () => closeModal(modalHelp));
-  document.getElementById('btn-start')?.addEventListener('click', () => closeModal(modalHelp));
+  const confirmNo = document.getElementById('btn-confirm-no');
+  if (confirmNo) confirmNo.addEventListener('click', function() { closeModal(modalConfirm); });
 
-  // Victory modal
-  document.getElementById('btn-next-level')?.addEventListener('click', () => { playSound('click'); nextLevel(); });
-  document.getElementById('btn-play-again')?.addEventListener('click', () => { playSound('click'); closeModal(modalVictory); resetBoard(); });
-
-  // Confirm reset
-  document.getElementById('btn-confirm-yes')?.addEventListener('click', async () => {
-    if (!currentUser) return;
-    if (currentUser.uid === 'guest_user') {
-      window._localRecords = {};
-      for (let l = 1; l <= 10; l++) { if (levels[l]) levels[l].unlocked = (l === 1); }
-      localStorage.removeItem('guest_unlocked');
-      localStorage.removeItem('guest_scores');
-      updateMenuStats();
-      buildLevelsGrid();
-      closeModal(modalConfirm);
-      showToast('Progress wiped!');
-      initLevel(1);
-      showScreen('screen-game');
-      return;
-    }
-    try {
-      const { db, doc, setDoc } = window._firebase;
-      // Note: just reset local and unlock
-      window._localRecords = {};
-      for (let l = 1; l <= 10; l++) { if (levels[l]) levels[l].unlocked = (l === 1); }
-      
-      // Reset progress in firestore
-      const unlockRef = doc(db, 'users', currentUser.uid, 'progress', 'unlocked');
-      await setDoc(unlockRef, { highestUnlocked: 1 }, { merge: true });
-
-      // Wipe user scores collections in Firestore if needed, but local records reset + level 1 unlock is sufficient.
-      updateMenuStats();
-      buildLevelsGrid();
-      closeModal(modalConfirm);
-      showToast('Progress wiped!');
-      initLevel(1);
-      showScreen('screen-game');
-    } catch(e) { console.error(e); }
-  });
-  document.getElementById('btn-confirm-no')?.addEventListener('click', () => closeModal(modalConfirm));
-
-  // Grid click & drag
   setupGridInteraction();
 }
 
-function nextLevel() {
+// Clean up name helper since the click handler had a shadow variable 'nextLevel'
+function nextLevelFn() {
   closeModal(modalVictory);
   const next = currentLevel + 1;
   if (levels[next] && levels[next].unlocked) { initLevel(next); }
 }
 
 function setupGridInteraction() {
-  // Click to select/swap
-  grid.addEventListener('click', (e) => {
+  grid.addEventListener('click', function(e) {
     if (!gameActive) return;
     const cell = e.target.closest('.grid-cell');
     if (!cell) return;
@@ -1017,7 +889,9 @@ function setupGridInteraction() {
       selectedCell = null;
       buildGrid();
     } else {
-      [gridState[selectedCell], gridState[idx]] = [gridState[idx], gridState[selectedCell]];
+      const tmp = gridState[selectedCell];
+      gridState[selectedCell] = gridState[idx];
+      gridState[idx] = tmp;
       selectedCell = null;
       moves++;
       document.getElementById('stat-moves').textContent = moves;
@@ -1027,16 +901,15 @@ function setupGridInteraction() {
     }
   });
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', function(e) {
     if (!e.target.closest('.grid-cell') && selectedCell !== null) {
       selectedCell = null;
       buildGrid();
     }
   });
 
-  // Drag & drop
   let dragIdx = null;
-  grid.addEventListener('dragstart', (e) => {
+  grid.addEventListener('dragstart', function(e) {
     if (!gameActive) return;
     const cell = e.target.closest('.grid-cell');
     if (!cell) return;
@@ -1045,31 +918,33 @@ function setupGridInteraction() {
     e.dataTransfer.effectAllowed = 'move';
     playSound('click');
   });
-  grid.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
-  grid.addEventListener('dragenter', (e) => {
+  grid.addEventListener('dragover', function(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+  grid.addEventListener('dragenter', function(e) {
     const cell = e.target.closest('.grid-cell');
     if (cell && parseInt(cell.dataset.index) !== dragIdx) cell.classList.add('drag-hover');
   });
-  grid.addEventListener('dragleave', (e) => {
+  grid.addEventListener('dragleave', function(e) {
     const cell = e.target.closest('.grid-cell');
     if (cell) cell.classList.remove('drag-hover');
   });
-  grid.addEventListener('drop', (e) => {
+  grid.addEventListener('drop', function(e) {
     e.preventDefault();
     if (!gameActive) return;
     const cell = e.target.closest('.grid-cell');
     if (!cell) return;
     const targetIdx = parseInt(cell.dataset.index);
     if (isNaN(targetIdx) || dragIdx === null || targetIdx === dragIdx) return;
-    [gridState[dragIdx], gridState[targetIdx]] = [gridState[targetIdx], gridState[dragIdx]];
+    const tmp = gridState[dragIdx];
+    gridState[dragIdx] = gridState[targetIdx];
+    gridState[targetIdx] = tmp;
     moves++;
     document.getElementById('stat-moves').textContent = moves;
     playSound('place');
     buildGrid();
     checkWin();
   });
-  grid.addEventListener('dragend', () => {
-    document.querySelectorAll('.grid-cell').forEach(c => {
+  grid.addEventListener('dragend', function() {
+    document.querySelectorAll('.grid-cell').forEach(function(c) {
       c.classList.remove('dragging', 'drag-hover');
     });
     dragIdx = null;
@@ -1077,17 +952,12 @@ function setupGridInteraction() {
 }
 
 function setupSettingsEvents() {
-  document.getElementById('btn-sound-toggle')?.addEventListener('click', toggleSound);
-  document.getElementById('btn-clear-progress')?.addEventListener('click', () => {
-    playSound('click');
-    openModal(modalConfirm);
-  });
-  document.getElementById('btn-show-rules')?.addEventListener('click', () => {
-    playSound('click');
-    openModal(modalHelp);
-  });
+  const soundToggle = document.getElementById('btn-sound-toggle');
+  if (soundToggle) soundToggle.addEventListener('click', toggleSound);
 
-  // Modal close handlers
-  document.getElementById('btn-close-leaderboard')?.addEventListener('click', () => closeModal(modalLeaderboard));
-  document.getElementById('btn-close-settings')?.addEventListener('click', () => closeModal(modalSettings));
+  const clearProgress = document.getElementById('btn-clear-progress');
+  if (clearProgress) clearProgress.addEventListener('click', function() { playSound('click'); openModal(modalConfirm); });
+
+  const showRules = document.getElementById('btn-show-rules');
+  if (showRules) showRules.addEventListener('click', function() { playSound('click'); openModal(modalHelp); });
 }

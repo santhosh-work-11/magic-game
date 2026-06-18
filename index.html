@@ -234,11 +234,10 @@
   <!-- Firebase -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
     import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyDhxQPwc3lzSBc7oC8KZW-hX0KjGlV492Y",
+   const firebaseConfig = {
+    apiKey: "AIzaSyDhxQPwc3lzSBc7oC8KZW-hX0KjGlV492Y",
       authDomain: "magic--square--game.firebaseapp.com",
       projectId: "magic--square--game",
       storageBucket: "magic--square--game.firebasestorage.app",
